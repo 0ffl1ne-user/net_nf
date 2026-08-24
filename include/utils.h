@@ -1,7 +1,6 @@
-#ifndef BUS_SH_H
-#define BUS_SH_H
+#ifndef UTILS_H
+#define UTILS_H
 
 int notify(const char* dsc);
 
 #endif
-
