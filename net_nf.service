@@ -4,7 +4,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=/home/john/src/net_nf/net_nf wlan0
+ExecStart=/home/john/src/net_nf/net_nf
 Restart=no
 
 [Install]
