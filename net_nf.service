@@ -1,0 +1,12 @@
+[Unit]
+Description=Network notification daemon.
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/john/src/net_nf/net_nf wlan0
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+
