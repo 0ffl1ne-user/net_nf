@@ -2,5 +2,5 @@
 
 set -e
 
-gcc src/main.c $(cat include/hds.h | tr -d '"' | cut -d ' ' -f 2 | sed 's/\.h$/.c/') $(pkg-config --cflags --libs libsystemd)
+gcc src/main.c src/bus_sh.c $(pkg-config --cflags --libs libsystemd) -o $1
 
