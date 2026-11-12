@@ -1,16 +1,12 @@
-#include <stdio.h>
-#include <net/if.h>
-#include <linux/netlink.h>
 #include <linux/genetlink.h>
 #include <linux/nl80211.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <sys/prctl.h>
 #include <signal.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <linux/prctl.h>
-#include <sys/prctl.h>
 #include <stdatomic.h>
 #include "../include/bus_sh.h"
 
@@ -22,6 +18,7 @@ static int nlf_id = -1;
 static void sig_hand(int sig)
 {
 	atomic_store_explicit(&rfl, 0, memory_order_release);
+	(void)sig;
 }
 
 static __u32 wlifi(void)
@@ -29,14 +26,14 @@ static __u32 wlifi(void)
 	int s = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_GENERIC);
 	if(s < 0)
 	{
-		return -1;
+		return 0;
 	}
 
 	struct sockaddr_nl local = { .nl_family = AF_NETLINK };
 	if(bind(s, (struct sockaddr*)&local, sizeof(local)))
 	{
 		close(s);
-		return -1;
+		return 0;
 	}
 
 	struct 
@@ -77,7 +74,7 @@ static __u32 wlifi(void)
 	if(sendmsg(s, &msg, 0) == -1)
 	{
 		close(s);
-		return -1;
+		return 0;
 	}
 	
 	char buf[8192] = { 0 };
@@ -197,11 +194,12 @@ int main(void)
 		return -1;
 	}
 	
-	long ml_gid = -1;
+	int ml_gid = -1;
 	char buf[8192] = { 0 };
 	iov.iov_base = buf;
 	iov.iov_len = 8192;
 	ssize_t rs = 0;
+	ssize_t rs_cp = 0;
 	while((rs = recvmsg(gns, &msg, 0)) != -1)
 	{
 		if(((struct sockaddr_nl*)msg.msg_name)->nl_pid && ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
@@ -209,7 +207,7 @@ int main(void)
 			close(gns);
 			return -1;
 		}	
-
+		rs_cp = rs;
 		for(struct nlmsghdr* nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, rs) && nlf_id == -1 && ml_gid == -1; nh = NLMSG_NEXT(nh,rs))
 		{
 			if(nh->nlmsg_type != GENL_ID_CTRL)
@@ -255,6 +253,10 @@ int main(void)
 							tmp_id = *(__u32*)(atr_nt + sizeof(struct nlattr));
 							atr_nt += NLA_ALIGN(((struct nlattr*)atr_nt)->nla_len);
 						}
+						else
+						{
+    							atr_nt += NLA_ALIGN(((struct nlattr*)atr_nt)->nla_len);
+						}
 					}
 				}
 	
@@ -265,7 +267,7 @@ int main(void)
 				nat += NLA_ALIGN(((struct nlattr*)nat)->nla_len);
 			}	
 		}
-		memset(buf, 0, rs);
+		memset(buf, 0, rs_cp);
 	}
 	
 	struct 
@@ -296,18 +298,18 @@ int main(void)
 	};
 	
 	int con = -1;
-	char tmp_ssid[sizeof("Connected to ") + 32] = { 0 };
 	long ifind = wlifi();
 	if((cc_buf.ifind = ifind))
 	{
 		iov.iov_base = &cc_buf;
 		iov.iov_len = sizeof(cc_buf);
 		rs = 0;
-		if(sendmsg(gns, &msg, 0) != -1)
+		ssize_t sr = sendmsg(gns, &msg, 0); 
+		iov.iov_base = buf;
+		iov.iov_len = 8192;
+		if(sr != -1)
 		{
 			memset(buf, 0, 8192);
-			iov.iov_base = buf;
-			iov.iov_len = 8192;
 			while((rs = recvmsg(gns, &msg, 0)) != -1)
 			{
 				if(((struct sockaddr_nl*)msg.msg_name)->nl_pid && ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
@@ -335,6 +337,10 @@ int main(void)
 				memset(buf, 0, rs);
 			}
 		}	
+	}
+	if(con == -1)
+	{
+    		con = 0;
 	}
 
 	if(setsockopt(gns, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &ml_gid, sizeof(ml_gid)))
@@ -385,6 +391,7 @@ int main(void)
 	struct epoll_event rec_ev = { 0 };
 	memset(buf, 0, 8192);
 	rs = 0;
+	rs_cp = 0;
 	char ssid_msg[sizeof("Connected to ") + 32] = { 0 };
 	char ext = 0;
 	__u16 dauth[] = { 2, 3, 4, 5, 6, 7, 8 };
@@ -402,13 +409,15 @@ int main(void)
 		}
 		while((rs = recvmsg(gns, &msg, 0)) != -1)
 		{
+			rs_cp = rs;
 			if(((struct sockaddr_nl*)msg.msg_name)->nl_pid && ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
 			{
+				memset(buf, 0, rs_cp);
 				continue;
 			}
 			for(struct nlmsghdr* nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, rs) && !ext; nh = NLMSG_NEXT(nh,rs))
 			{
-				if(((struct genlmsghdr*)(buf + sizeof(struct nlmsghdr)))->cmd == NL80211_CMD_CONNECT && !con)
+				if(((struct genlmsghdr*)((char*)nh + sizeof(struct nlmsghdr)))->cmd == NL80211_CMD_CONNECT && !con)
 				{
 					struct nlattr* nat = (struct nlattr*)((char*)nh + sizeof(struct nlmsghdr) + sizeof(struct genlmsghdr));
 					while((char*)nat < (char*)nh + nh->nlmsg_len)
@@ -421,13 +430,22 @@ int main(void)
 						else if(nat->nla_type == NL80211_ATTR_REQ_IE)
 						{
 							memset(ssid_msg, 0, sizeof("Connected to ") + 32);
-							char* tlv = (char*)nat + sizeof(struct nlattr);
-							while(*tlv != IEEE80211_WLAN_EID_SSID)
+							unsigned char* tlv = (unsigned char*)nat + sizeof(struct nlattr);
+							while(tlv + 2 <= (unsigned char*)nat + nat->nla_len && *tlv != IEEE80211_WLAN_EID_SSID)
 							{
-								tlv += 2 + *(tlv + 1);
+								tlv += 2 + tlv[1];
+							}
+							size_t len = 0;
+							if(tlv + 2 <= (unsigned char*)nat + nat->nla_len)
+							{
+								len = tlv[1];
+								if(len > 32 || tlv + 2 + len > (unsigned char*)nat + nat->nla_len)
+								{
+									len = 0;
+								}
 							}
 							strcpy(ssid_msg, "Connected to ");
-							strncpy(ssid_msg + sizeof("Connected to ") - 1, tlv + 2, *(tlv + 1));
+							memcpy(ssid_msg + sizeof("Connected to ") - 1, (char*)(tlv + 2), len);
 							notify(ssid_msg);
 							ext = 1;
 							if(wat)
@@ -438,7 +456,7 @@ int main(void)
 						nat = (struct nlattr*)((char*)nat + NLA_ALIGN(nat->nla_len));
 					}		
 				}
-				else if(((struct genlmsghdr*)(buf + sizeof(struct nlmsghdr)))->cmd == NL80211_CMD_DISCONNECT)
+				else if(((struct genlmsghdr*)((char*)nh + sizeof(struct nlmsghdr)))->cmd == NL80211_CMD_DISCONNECT)
 				{
 					struct nlattr* nat = (struct nlattr*)((char*)nh + sizeof(struct nlmsghdr) + sizeof(struct genlmsghdr));
 					while((char*)nat < (char*)nh + nh->nlmsg_len)
@@ -446,7 +464,7 @@ int main(void)
 						if(nat->nla_type == NL80211_ATTR_REASON_CODE)
 						{
 							__u16 reas = *(__u16*)((char*)nat + sizeof(struct nlattr));
-							for(int i = 0; i < sizeof(dauth) / sizeof(__u16) && con; ++i)
+							for(int i = 0; i < (int)(sizeof(dauth) / sizeof(__u16)) && con; ++i)
 							{
 								con &= !(reas == dauth[i]);
 							}
@@ -462,7 +480,7 @@ int main(void)
 				}
 			}
 			ext = 0;
-			memset(buf, 0, rs);
+			memset(buf, 0, rs_cp);
 		}
 		if(errno != EWOULDBLOCK && errno != EAGAIN)
 		{
