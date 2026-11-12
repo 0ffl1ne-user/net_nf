@@ -9,7 +9,7 @@ int notify(const char* dsc)
 		return -1;
 	}	
 	
-	sd_bus_message* msg;
+	sd_bus_message* msg = NULL;
 	if(sd_bus_message_new_method_call(bus, &msg, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify") < 0)
 	{
 		sd_bus_message_unref(msg);
@@ -29,7 +29,7 @@ int notify(const char* dsc)
 	ret |= sd_bus_message_append(msg, "i", -1) < 0;
 
 	sd_bus_error err = SD_BUS_ERROR_NULL;
-	if(sd_bus_call(bus, msg, 1000, &err, NULL) < 0)
+	if(sd_bus_call(bus, msg, 1000000, &err, NULL) < 0)
 	{
 		ret |= 1;
 		sd_bus_error_free(&err);
