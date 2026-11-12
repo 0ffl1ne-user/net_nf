@@ -12,7 +12,7 @@
 #include <linux/prctl.h>
 #include <sys/prctl.h>
 #include <stdatomic.h>
-#include "include/hds.h"
+#include "../include/bus_sh.h"
 
 #define IEEE80211_WLAN_EID_SSID 0
 
