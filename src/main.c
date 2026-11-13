@@ -81,6 +81,7 @@ static __u32 wlifi(void)
 	iov.iov_base = buf;
 	iov.iov_len = 8192;
 	ssize_t rs = 0;
+	ssize_t rs_cp = 0;
 	__u32 ifi = 0;
 	__u32 iftype = 0;
 	struct nlmsghdr* nh = NULL;
@@ -89,7 +90,8 @@ static __u32 wlifi(void)
 		if(((struct sockaddr_nl*)msg.msg_name)->nl_pid && ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
 		{
 			break;
-		}	
+		}
+		rs_cp = rs;	
 		for(nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, rs) && (!ifi || !iftype); nh = NLMSG_NEXT(nh,rs))
 		{
 			if(nh->nlmsg_type == NLMSG_DONE)
@@ -114,12 +116,14 @@ static __u32 wlifi(void)
 
 				if(iftype && ifi)
 				{
+					close(s);
+					return ifi;
 					break;
 				}
 				nat += NLA_ALIGN(((struct nlattr*)nat)->nla_len);
 			}
 		}
-		memset(buf, 0, rs);
+		memset(buf, 0, rs_cp);
 		if(nh->nlmsg_type == NLMSG_DONE)
 		{
 			break;
@@ -127,7 +131,7 @@ static __u32 wlifi(void)
 	}
 
 	close(s);
-	return ifi;
+	return 0;
 }
 
 int main(void)
@@ -298,12 +302,13 @@ int main(void)
 	};
 	
 	int con = -1;
-	long ifind = wlifi();
+	__u32 ifind = wlifi();
 	if((cc_buf.ifind = ifind))
 	{
 		iov.iov_base = &cc_buf;
 		iov.iov_len = sizeof(cc_buf);
 		rs = 0;
+		rs_cp = 0;
 		ssize_t sr = sendmsg(gns, &msg, 0); 
 		iov.iov_base = buf;
 		iov.iov_len = 8192;
@@ -316,6 +321,7 @@ int main(void)
 				{
 					break;
 				}	
+				rs_cp = rs;
 				for(struct nlmsghdr* nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, rs) && con == -1; nh = NLMSG_NEXT(nh,rs))
 				{
 					char* nat = (char*)nh + sizeof(struct nlmsghdr) + sizeof(struct genlmsghdr);
@@ -334,7 +340,7 @@ int main(void)
 						con = 0;
 					}	
 				}
-				memset(buf, 0, rs);
+				memset(buf, 0, rs_cp);
 			}
 		}	
 	}
@@ -410,7 +416,7 @@ int main(void)
 		while((rs = recvmsg(gns, &msg, 0)) != -1)
 		{
 			rs_cp = rs;
-			if(((struct sockaddr_nl*)msg.msg_name)->nl_pid && ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
+			if(((struct sockaddr_nl*)msg.msg_name)->nl_pid || ((struct sockaddr_nl*)msg.msg_name)->nl_family != AF_NETLINK)
 			{
 				memset(buf, 0, rs_cp);
 				continue;
@@ -430,16 +436,16 @@ int main(void)
 						else if(nat->nla_type == NL80211_ATTR_REQ_IE)
 						{
 							memset(ssid_msg, 0, sizeof("Connected to ") + 32);
-							unsigned char* tlv = (unsigned char*)nat + sizeof(struct nlattr);
-							while(tlv + 2 <= (unsigned char*)nat + nat->nla_len && *tlv != IEEE80211_WLAN_EID_SSID)
+							__u8* tlv = (__u8*)nat + sizeof(struct nlattr);
+							while(tlv + 2 <= (__u8*)nat + nat->nla_len && *tlv != IEEE80211_WLAN_EID_SSID)
 							{
 								tlv += 2 + tlv[1];
 							}
 							size_t len = 0;
-							if(tlv + 2 <= (unsigned char*)nat + nat->nla_len)
+							if(tlv + 2 <= (__u8*)nat + nat->nla_len)
 							{
 								len = tlv[1];
-								if(len > 32 || tlv + 2 + len > (unsigned char*)nat + nat->nla_len)
+								if(len > 32 || tlv + 2 + len > (__u8*)nat + nat->nla_len)
 								{
 									len = 0;
 								}
