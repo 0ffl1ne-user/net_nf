@@ -1,5 +1,5 @@
 [Unit]
-Description=Network notification daemon.
+Description=Wifi notification daemon.
 After=default.target
 
 [Service]
