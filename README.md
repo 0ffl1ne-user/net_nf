@@ -1,7 +1,7 @@
 # Wifi notification daemon.
 This is a lightweight wifi notification daemon utilizing epoll to wait on a netlink socket which is subscribed to nl80211's mlme multicast group and then send a notification which says that the wifi has been disconnected or connected along with the SSID shown besides the latter.
 
-## Dependencies
+## Requirements
 **OS**: Linux <br>
 **Libraries**: [libsystemd](https://github.com/systemd/systemd)
 
