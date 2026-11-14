@@ -31,3 +31,6 @@ systemctl --user stop net_nf
 sudo rm -r net_nf .config/systemd/user/net_nf.service /usr/local/bin/net_nf
 systemctl --user daemon-reload
 ```
+
+## License
+This project is licensed under the [MIT License](LICENSE).
